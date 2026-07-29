@@ -1,5 +1,54 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import {
+import { // ---- Affiliate banner (paste once, right under the imports) ----
+function AffiliateBanner() {
+  const EXCHANGES = [
+    { name: "Binance", tag: "P2P • most liquidity", accent: "#F0B90B", href: "https://www.binance.com/referral/earn-together/refer2earn-usdc/claim?hl=en&ref=GRO_28502_OZIWV&utm_source=referral_entrance" },
+    { name: "Bybit", tag: "Fast KYC, deep P2P", accent: "#F7A600", href: "https://partner.bybit.com/b/157970" },
+    { name: "OKX", tag: "Wide pair coverage", accent: "#B0B0B0", href: "https://okx.com/join/31050757" },
+    { name: "BingX", tag: "Low fees on USDT", accent: "#3B82F6", href: "https://bingxdao.com/invite/N0ZCF7/" },
+    { name: "KuCoin", tag: "Wide altcoin liquidity", accent: "#22C08F", href: "https://link.kucoin.com/iqEP/alk9lpk6?utm_source=refer_earn&utm_campaign=referAndEarn&rcode=QBSAKVY7&utm_medium=share" },
+  ];
+  const BROKERS = [
+    { name: "XM", tag: "Forex & CFD broker", accent: "#E14657", href: "https://www.xmglobal.com/referral?token=srQSW9IulHeBxYNW-Pb1Tg" },
+  ];
+  const PROP_FIRMS = [
+    { name: "PropFirmMatch", tag: "Compare prop firms", accent: "#8B7CFA", href: "https://www.propfirmmatch.com/?a_aid=moulay" },
+    { name: "Earn2Trade", tag: "Futures funded accounts", accent: "#22C08F", href: "https://www.earn2trade.com/trader-career-path?a_pid=non&a_bid=8d7b4b9e" },
+  ];
+  const Row = ({ items }) => (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
+      {items.map((it) => (
+        <a key={it.name} href={it.href} target="_blank" rel="noopener noreferrer sponsored"
+          className="group relative overflow-hidden rounded-lg border border-[#2B3139] bg-[#1E2329] px-3 py-3 flex flex-col gap-1 transition-colors hover:border-[color:var(--accent)]"
+          style={{ "--accent": it.accent }}>
+          <span className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: it.accent }} aria-hidden="true" />
+          <span className="text-sm font-semibold text-[#EAECEF]" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{it.name}</span>
+          <span className="text-[11px] text-stone-400">{it.tag}</span>
+          <span className="font-mono text-[11px] font-medium mt-1" style={{ color: it.accent }}>Get bonus →</span>
+        </a>
+      ))}
+    </div>
+  );
+  return (
+    <section className="max-w-5xl mx-auto px-5 py-6">
+      <div className="rounded-xl border border-[#2B3139] bg-[#1E2329]/40 p-5">
+        <div className="mb-3">
+          <p className="font-mono text-[10px] uppercase tracking-wider text-stone-500">Crypto exchanges</p>
+          <p className="text-sm text-stone-300 mt-1">These are the exchanges the numbers on this page are based on.</p>
+        </div>
+        <Row items={EXCHANGES} />
+        <div className="mt-5 mb-3"><p className="font-mono text-[10px] uppercase tracking-wider text-stone-500">Forex & CFD brokers</p></div>
+        <Row items={BROKERS} />
+        <div className="mt-5 mb-3"><p className="font-mono text-[10px] uppercase tracking-wider text-stone-500">Prop firms</p></div>
+        <Row items={PROP_FIRMS} />
+        <p className="text-[10px] text-stone-500 leading-relaxed mt-4">
+          Affiliate disclosure: links above are referral links. Signing up through them may earn Moulay Trading a commission at no extra cost to you.
+        </p>
+      </div>
+    </section>
+  );
+}
+// ---- end affiliate banner ----
   LineChart,
   Line,
   XAxis,
