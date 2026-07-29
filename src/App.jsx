@@ -918,7 +918,13 @@ export default function App() {
         {tab === "single" && <SingleTrade t={t} currency={currency} asset={asset} />}
         {tab === "compound" && <Compounding t={t} currency={currency} />}
         {tab === "compare" && <Compare t={t} currency={currency} />}
-        {tab === "legal" && <Legal t={t} />}
+        {tab === "legal" && <Legal t={t} />} </main>
+
+        <AffiliateBanner />
+
+        <div className="max-w-5xl mx-auto px-5">
+          <AdSlot slotId="2222222222" label="In-content" />
+        </div>
       </main>
 
       <div className="max-w-5xl mx-auto px-5">
