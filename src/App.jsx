@@ -1,5 +1,31 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { // ---- Affiliate banner (paste once, right under the imports) ----
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  Legend,
+} from "recharts";
+
+// ---- Affiliate banner ----
+function trackAffiliateClick(name) {
+  try {
+    const key = "moulay-p2p:affiliate-clicks";
+    const raw = localStorage.getItem(key);
+    const counts = raw ? JSON.parse(raw) : {};
+    counts[name] = (counts[name] || 0) + 1;
+    localStorage.setItem(key, JSON.stringify(counts));
+  } catch (e) {}
+  if (typeof window !== "undefined" && typeof window.gtag === "function") {
+    window.gtag("event", "affiliate_click", { affiliate_name: name });
+  }
+}
+
 function AffiliateBanner() {
   const EXCHANGES = [
     { name: "Binance", tag: "P2P • most liquidity", accent: "#F0B90B", href: "https://www.binance.com/referral/earn-together/refer2earn-usdc/claim?hl=en&ref=GRO_28502_OZIWV&utm_source=referral_entrance" },
@@ -19,10 +45,11 @@ function AffiliateBanner() {
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
       {items.map((it) => (
         <a key={it.name} href={it.href} target="_blank" rel="noopener noreferrer sponsored"
-          className="group relative overflow-hidden rounded-lg border border-[#2B3139] bg-[#1E2329] px-3 py-3 flex flex-col gap-1 transition-colors hover:border-[color:var(--accent)]"
+          onClick={() => trackAffiliateClick(it.name)}
+          className="group relative overflow-hidden rounded-lg border border-[#262B35] bg-[#161920] px-3 py-3 flex flex-col gap-1 transition-colors hover:border-[color:var(--accent)]"
           style={{ "--accent": it.accent }}>
           <span className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: it.accent }} aria-hidden="true" />
-          <span className="text-sm font-semibold text-[#EAECEF]" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{it.name}</span>
+          <span className="text-sm font-semibold text-[#EDEFF2]" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{it.name}</span>
           <span className="text-[11px] text-stone-400">{it.tag}</span>
           <span className="font-mono text-[11px] font-medium mt-1" style={{ color: it.accent }}>Get bonus →</span>
         </a>
@@ -31,7 +58,7 @@ function AffiliateBanner() {
   );
   return (
     <section className="max-w-5xl mx-auto px-5 py-6">
-      <div className="rounded-xl border border-[#2B3139] bg-[#1E2329]/40 p-5">
+      <div className="rounded-xl border border-[#262B35] bg-[#161920]/40 p-5">
         <div className="mb-3">
           <p className="font-mono text-[10px] uppercase tracking-wider text-stone-500">Crypto exchanges</p>
           <p className="text-sm text-stone-300 mt-1">These are the exchanges the numbers on this page are based on.</p>
@@ -49,17 +76,60 @@ function AffiliateBanner() {
   );
 }
 // ---- end affiliate banner ----
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  Legend,
-} from "recharts";
+
+// ---- Live indicative USDT/MAD reference rate ----
+// Uses Frankfurter (free, no key, CORS-friendly) for USD->MAD as a stand-in
+// for USDT, refreshed every 5 minutes. Clearly labeled as indicative, not
+// the actual P2P execution price.
+function LivePriceTicker() {
+  const [rate, setRate] = useState(null);
+  const [status, setStatus] = useState("loading"); // loading | ok | error
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("https://api.frankfurter.app/latest?from=USD&to=MAD");
+        const data = await res.json();
+        if (!cancelled && data?.rates?.MAD) {
+          setRate(data.rates.MAD);
+          setStatus("ok");
+        } else if (!cancelled) {
+          setStatus("error");
+        }
+      } catch (e) {
+        if (!cancelled) setStatus("error");
+      }
+    }
+    load();
+    const id = setInterval(load, 5 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  if (status === "error") return null;
+
+  const items = [
+    status === "loading"
+      ? "LOADING REFERENCE RATE…"
+      : `1 USDT ≈ ${rate.toFixed(3)} MAD — INDICATIVE, NOT P2P PRICE`,
+    "SPREAD ZONES · LOW < 0.3% · NORMAL 0.3–1.2% · HIGH > 1.2%",
+    "MOULAY TRADING · CALC.MOULAYTRADING.FIT",
+  ];
+  const line = items.join("     ·     ");
+
+  return (
+    <div
+      className="w-full overflow-hidden border-b border-[#262B35] bg-[#0D0F14]"
+      role="status"
+      aria-label="Market reference ticker"
+    >
+      <div className="ticker-track flex whitespace-nowrap font-mono text-[11px] tracking-wider text-[#E8A33D] py-1.5">
+        <span className="px-4">{line}</span>
+        <span className="px-4" aria-hidden="true">{line}</span>
+      </div>
+    </div>
+  );
+}
 
 // ---------- reference data ----------
 const CURRENCIES = [
@@ -500,6 +570,28 @@ const fmt = (n) =>
     Number.isFinite(n) ? n : 0
   );
 
+// ---- Signature element: mechanical ledger counter ----
+// Renders a number as individual character tiles. Each time a character
+// changes, it remounts (via `key`) and plays a short roll-in animation,
+// evoking an old currency-exchange counter rather than a static number.
+function OdometerNumber({ value, className = "" }) {
+  const str = fmt(value);
+  const chars = str.split("");
+  return (
+    <span className={`inline-flex ${className}`} aria-label={str}>
+      {chars.map((ch, i) => (
+        <span
+          key={`${i}-${ch}-${str.length}`}
+          className="odometer-digit inline-block overflow-hidden"
+          style={{ minWidth: /[0-9]/.test(ch) ? "0.62em" : undefined }}
+        >
+          <span className="inline-block">{ch}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
 // Persists a small state object under a given key using localStorage.
 // Works standalone in the browser and inside a Capacitor WebView.
 function usePersistentState(key, initial) {
@@ -542,12 +634,12 @@ function SpreadMeter({ value, t }) {
       <div className="flex justify-between text-[11px] tracking-wide font-mono text-stone-400 mb-1">
         <span>0%</span><span>1.25%</span><span>2.5%+</span>
       </div>
-      <div className="relative h-2 rounded-full bg-gradient-to-r from-[#0ECB81] via-[#FCD535] to-[#F6465D]">
-        <div className="absolute -top-1.5 w-4 h-4 rounded-full bg-[#EAECEF] border-2 border-[#0f2a3d] shadow"
+      <div className="relative h-2 rounded-full bg-gradient-to-r from-[#3FBF7F] via-[#E8A33D] to-[#E5484D]">
+        <div className="absolute -top-1.5 w-4 h-4 rounded-full bg-[#EDEFF2] border-2 border-[#0f2a3d] shadow"
           style={{ left: `calc(${posPercent}% - 8px)` }} />
       </div>
       <p className="text-xs font-mono mt-2 text-stone-400">
-        {t.spreadLabel}: <span className="text-[#EAECEF]">{fmt(value)}%</span> · {zoneLabel}
+        {t.spreadLabel}: <span className="text-[#EDEFF2]">{fmt(value)}%</span> · {zoneLabel}
       </p>
     </div>
   );
@@ -557,10 +649,10 @@ function NumberField({ label, value, onChange, step = "any", suffix }) {
   return (
     <label className="block mb-4">
       <span className="block text-xs uppercase tracking-wider text-stone-400 mb-1.5 font-sans">{label}</span>
-      <div className="flex items-center gap-2 bg-[#0B0E11] border border-[#3B4048] rounded-lg px-3 py-2.5 focus-within:border-[#FCD535] transition-colors">
+      <div className="flex items-center gap-2 bg-[#0B0E11] border border-[#34394A] rounded-lg px-3 py-2.5 focus-within:border-[#E8A33D] transition-colors">
         <input type="number" step={step} value={value}
           onChange={(e) => onChange(parseFloat(e.target.value))}
-          className="w-full bg-transparent outline-none font-mono text-[#EAECEF] text-lg" />
+          className="w-full bg-transparent outline-none font-mono text-[#EDEFF2] text-lg" />
         {suffix && <span className="text-stone-500 text-sm font-mono whitespace-nowrap">{suffix}</span>}
       </div>
     </label>
@@ -568,7 +660,197 @@ function NumberField({ label, value, onChange, step = "any", suffix }) {
 }
 
 function Card({ children, className = "" }) {
-  return <div className={`bg-[#1E2329] border border-[#2B3139] rounded-2xl p-5 ${className}`}>{children}</div>;
+  return <div className={`bg-[#161920] border border-[#262B35] rounded-2xl p-5 ${className}`}>{children}</div>;
+}
+
+// ---- Break-even calculator ----
+// Given a buy price and round-trip fee %, what sell price is needed to
+// break even? This does not depend on capital, only on price and fee.
+function BreakEven({ currency, asset }) {
+  const [buy, setBuy] = useState(11.2);
+  const [fee, setFee] = useState(0.1);
+  const breakEvenPrice = buy * (1 + (2 * fee) / 100);
+
+  return (
+    <Card className="mt-5">
+      <p className="text-xs uppercase tracking-wider text-stone-400 mb-3 font-mono">Break-even price</p>
+      <div className="grid grid-cols-2 gap-3">
+        <NumberField label="Buy price" value={buy} onChange={setBuy} step="0.001" suffix={`${asset}/${currency}`} />
+        <NumberField label="Fees (%)" value={fee} onChange={setFee} step="0.01" suffix="%" />
+      </div>
+      <div className="mt-2 flex items-baseline gap-2">
+        <span className="text-sm text-stone-400">Sell at or above</span>
+        <span className="font-mono text-2xl font-bold text-[#E8A33D]">{fmt(breakEvenPrice)}</span>
+        <span className="text-sm text-stone-500">{asset}/{currency}</span>
+      </div>
+      <p className="text-[11px] text-stone-500 mt-1">to avoid a loss on this trade.</p>
+    </Card>
+  );
+}
+
+// ---- Compare exchanges: manual price entry, ranked by profit ----
+// Live P2P prices can't be fetched reliably from the browser (most
+// exchanges' P2P endpoints block cross-origin requests), so this stays
+// manual: type each exchange's current buy price and it ranks them and
+// links straight to the best one via your existing referral link.
+const COMPARE_EXCHANGES = [
+  { name: "Binance", accent: "#F0B90B", href: "https://www.binance.com/referral/earn-together/refer2earn-usdc/claim?hl=en&ref=GRO_28502_OZIWV&utm_source=referral_entrance" },
+  { name: "Bybit", accent: "#F7A600", href: "https://partner.bybit.com/b/157970" },
+  { name: "OKX", accent: "#B0B0B0", href: "https://okx.com/join/31050757" },
+  { name: "BingX", accent: "#3B82F6", href: "https://bingxdao.com/invite/N0ZCF7/" },
+  { name: "KuCoin", accent: "#22C08F", href: "https://link.kucoin.com/iqEP/alk9lpk6?utm_source=refer_earn&utm_campaign=referAndEarn&rcode=QBSAKVY7&utm_medium=share" },
+];
+
+function ExchangeCompare({ currency, asset }) {
+  const [rows, setRows] = usePersistentState("exchange-compare-prices", {
+    Binance: 11.2, Bybit: 11.22, OKX: 11.18, BingX: 11.25, KuCoin: 11.19,
+  });
+  const [sellPrice, setSellPrice] = useState(11.35);
+
+  const ranked = useMemo(() => {
+    return COMPARE_EXCHANGES.map((ex) => {
+      const buy = rows[ex.name] ?? 0;
+      const spread = buy ? ((sellPrice - buy) / buy) * 100 : 0;
+      return { ...ex, buy, spread };
+    }).sort((a, b) => b.spread - a.spread);
+  }, [rows, sellPrice]);
+
+  const best = ranked[0];
+
+  return (
+    <Card className="mt-5">
+      <div className="flex items-center justify-between mb-3 gap-3">
+        <p className="text-xs uppercase tracking-wider text-stone-400 font-mono">Compare exchanges (buy price)</p>
+        <label className="flex items-center gap-1.5 text-[11px] text-stone-500">
+          vs. sell
+          <input
+            type="number"
+            step="0.001"
+            value={sellPrice}
+            onChange={(e) => setSellPrice(parseFloat(e.target.value))}
+            className="w-20 bg-[#0D0F14] border border-[#34394A] rounded px-1.5 py-0.5 font-mono text-xs text-[#EDEFF2] outline-none focus-visible:border-[#E8A33D]"
+          />
+        </label>
+      </div>
+
+      <div className="space-y-2">
+        {ranked.map((ex, i) => (
+          <div
+            key={ex.name}
+            className="flex items-center gap-3 rounded-lg border px-3 py-2"
+            style={{ borderColor: i === 0 ? ex.accent : "#262B35" }}
+          >
+            <span className="w-16 text-sm font-semibold text-[#EDEFF2]">{ex.name}</span>
+            <input
+              type="number"
+              step="0.001"
+              value={rows[ex.name]}
+              onChange={(e) => setRows((s) => ({ ...s, [ex.name]: parseFloat(e.target.value) }))}
+              className="w-24 bg-[#0D0F14] border border-[#34394A] rounded px-2 py-1 font-mono text-sm text-[#EDEFF2] outline-none focus-visible:border-[#E8A33D]"
+            />
+            <span className="flex-1 text-right font-mono text-sm" style={{ color: ex.spread >= 0 ? "#3FBF7F" : "#E5484D" }}>
+              {ex.spread >= 0 ? "+" : ""}{fmt(ex.spread)}%
+            </span>
+            {i === 0 && (
+              <a
+                href={ex.href}
+                target="_blank"
+                rel="noopener noreferrer sponsored"
+                onClick={() => trackAffiliateClick(ex.name)}
+                className="text-[11px] font-mono px-2 py-1 rounded-full border"
+                style={{ borderColor: ex.accent, color: ex.accent }}
+              >
+                Trade here →
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-stone-500 mt-3">
+        Type each exchange's current buy price manually — live cross-exchange
+        rates aren't available directly in the browser. {best?.name} currently
+        gives the best spread based on what you entered.
+      </p>
+    </Card>
+  );
+}
+
+// ---- Calculation history (localStorage, last 10 entries) ----
+function useCalcHistory(key) {
+  const storageKey = `moulay-p2p:history:${key}`;
+  const [history, setHistory] = useState(() => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const addEntry = (entry) => {
+    setHistory((prev) => {
+      const next = [{ ...entry, ts: Date.now() }, ...prev].slice(0, 10);
+      try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+  };
+
+  const clearHistory = () => {
+    setHistory([]);
+    try { localStorage.removeItem(storageKey); } catch (e) {}
+  };
+
+  return [history, addEntry, clearHistory];
+}
+
+function HistoryList({ history, onClear, currency }) {
+  if (!history.length) return null;
+  return (
+    <div className="mt-5 pt-4 border-t border-[#262B35]">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs uppercase tracking-wider text-stone-400">Recent calculations</span>
+        <button onClick={onClear} className="text-[11px] text-stone-500 hover:text-[#E5484D] transition-colors">
+          Clear
+        </button>
+      </div>
+      <div className="space-y-1.5 max-h-40 overflow-y-auto">
+        {history.map((h, i) => (
+          <div key={h.ts + "-" + i} className="flex justify-between text-xs font-mono text-stone-400">
+            <span>{new Date(h.ts).toLocaleTimeString()}</span>
+            <span>{fmt(h.capital)} {currency} · {fmt(h.buy)}→{fmt(h.sell)}</span>
+            <span className={h.profit >= 0 ? "text-[#3FBF7F]" : "text-[#E5484D]"}>
+              {h.profit >= 0 ? "+" : ""}{fmt(h.profit)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---- Share result via WhatsApp / Telegram ----
+function ShareButtons({ text }) {
+  const encoded = encodeURIComponent(text);
+  return (
+    <div className="flex gap-2 mt-4">
+      <a
+        href={`https://wa.me/?text=${encoded}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex-1 text-center text-xs font-mono border border-[#262B35] rounded-full px-3 py-2 text-stone-300 hover:border-[#3FBF7F] hover:text-[#3FBF7F] transition-colors"
+      >
+        Share on WhatsApp
+      </a>
+      <a
+        href={`https://t.me/share/url?url=&text=${encoded}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex-1 text-center text-xs font-mono border border-[#262B35] rounded-full px-3 py-2 text-stone-300 hover:border-[#3B82F6] hover:text-[#3B82F6] transition-colors"
+      >
+        Share on Telegram
+      </a>
+    </div>
+  );
 }
 
 function SingleTrade({ t, currency, asset }) {
@@ -591,6 +873,15 @@ function SingleTrade({ t, currency, asset }) {
     return { profit, margin, spread };
   }, [capital, buy, sell, fee]);
 
+  const [history, addEntry, clearHistory] = useCalcHistory("single-trade");
+
+  const shareText =
+    `P2P trade result (${asset}/${currency}):\n` +
+    `Capital: ${fmt(capital)} ${currency}\n` +
+    `Buy: ${fmt(buy)} · Sell: ${fmt(sell)}\n` +
+    `Net profit: ${profit >= 0 ? "+" : ""}${fmt(profit)} ${currency} (${fmt(margin)}%)\n` +
+    `via calc.moulaytrading.fit`;
+
   const pairSuffix = `${asset}/${currency}`;
 
   return (
@@ -603,19 +894,30 @@ function SingleTrade({ t, currency, asset }) {
         </div>
         <NumberField label={t.single.fee} value={fee} onChange={setFee} step="0.01" suffix="%" />
         <SpreadMeter value={spread} t={t.single} />
-        <p className={`text-[11px] font-mono mt-3 transition-opacity ${justSaved ? "opacity-100 text-[#0ECB81]" : "opacity-0"}`}>{t.saved}</p>
+        <p className={`text-[11px] font-mono mt-3 transition-opacity ${justSaved ? "opacity-100 text-[#3FBF7F]" : "opacity-0"}`}>{t.saved}</p>
       </Card>
 
       <Card className="flex flex-col justify-center items-center text-center">
-        <span className="text-xs uppercase tracking-wider text-stone-400 mb-2">{t.single.result}</span>
-        <span className={`text-5xl font-mono font-bold ${profit >= 0 ? "text-[#0ECB81]" : "text-[#F6465D]"}`}>
-          {profit >= 0 ? "+" : ""}{fmt(profit)} <span className="text-2xl text-stone-500">{currency}</span>
+        <span className="text-xs uppercase tracking-wider text-stone-400 mb-2 font-mono">{t.single.result}</span>
+        <span className={`text-5xl font-mono font-bold ${profit >= 0 ? "text-[#3FBF7F]" : "text-[#E5484D]"}`}>
+          {profit >= 0 ? "+" : ""}<OdometerNumber value={profit} /> <span className="text-2xl text-stone-500">{currency}</span>
         </span>
-        <div className="mt-6 w-full h-px bg-[#2B3139]" />
+        <div className="mt-6 w-full h-px bg-[#262B35]" />
         <div className="mt-4 flex justify-between w-full text-sm">
           <span className="text-stone-400">{t.single.margin}</span>
-          <span className="font-mono text-[#EAECEF]">{fmt(margin)}%</span>
+          <span className="font-mono text-[#EDEFF2]">{fmt(margin)}%</span>
         </div>
+
+        <button
+          onClick={() => addEntry({ capital, buy, sell, fee, profit })}
+          className="mt-4 w-full text-xs font-mono border border-[#34394A] rounded-full px-3 py-2 text-stone-300 hover:border-[#E8A33D] hover:text-[#E8A33D] transition-colors"
+        >
+          Save this calculation
+        </button>
+
+        <ShareButtons text={shareText} />
+
+        <HistoryList history={history} onClear={clearHistory} currency={currency} />
       </Card>
     </div>
   );
@@ -658,22 +960,22 @@ function Compounding({ t, currency }) {
           <NumberField label={t.compound.spread} value={spread} onChange={setSpread} step="0.01" suffix="%" />
         </div>
         <NumberField label={t.compound.weeks} value={weeks} onChange={setWeeks} />
-        <p className={`text-[11px] font-mono transition-opacity ${justSaved ? "opacity-100 text-[#0ECB81]" : "opacity-0"}`}>{t.saved}</p>
+        <p className={`text-[11px] font-mono transition-opacity ${justSaved ? "opacity-100 text-[#3FBF7F]" : "opacity-0"}`}>{t.saved}</p>
       </Card>
 
       <div className="flex flex-col gap-4">
         <div className="grid grid-cols-3 gap-3">
           <Card className="text-center py-4">
             <div className="text-[11px] uppercase tracking-wider text-stone-400">{t.compound.finalCapital}</div>
-            <div className="font-mono text-xl font-bold text-[#EAECEF] mt-1">{fmt(final.capital)}</div>
+            <div className="font-mono text-xl font-bold text-[#EDEFF2] mt-1">{fmt(final.capital)}</div>
           </Card>
           <Card className="text-center py-4">
             <div className="text-[11px] uppercase tracking-wider text-stone-400">{t.compound.totalProfit}</div>
-            <div className="font-mono text-xl font-bold text-[#0ECB81] mt-1">+{fmt(totalProfit)}</div>
+            <div className="font-mono text-xl font-bold text-[#3FBF7F] mt-1">+{fmt(totalProfit)}</div>
           </Card>
           <Card className="text-center py-4">
             <div className="text-[11px] uppercase tracking-wider text-stone-400">{t.compound.totalInjected}</div>
-            <div className="font-mono text-xl font-bold text-[#FCD535] mt-1">{fmt(final.injected)}</div>
+            <div className="font-mono text-xl font-bold text-[#E8A33D] mt-1">{fmt(final.injected)}</div>
           </Card>
         </div>
 
@@ -681,11 +983,11 @@ function Compounding({ t, currency }) {
           <p className="text-xs uppercase tracking-wider text-stone-400 mb-3">{t.compound.chartTitle}</p>
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={data}>
-              <CartesianGrid stroke="#2B3139" strokeDasharray="3 3" />
+              <CartesianGrid stroke="#262B35" strokeDasharray="3 3" />
               <XAxis dataKey="week" stroke="#687EE3" fontSize={11} />
               <YAxis stroke="#687EE3" fontSize={11} width={60} />
-              <Tooltip contentStyle={{ background: "#0B0E11", border: "1px solid #3B4048", borderRadius: 8, fontSize: 12 }} />
-              <Line type="monotone" dataKey="capital" stroke="#FCD535" strokeWidth={2.5} dot={false} />
+              <Tooltip contentStyle={{ background: "#0B0E11", border: "1px solid #34394A", borderRadius: 8, fontSize: 12 }} />
+              <Line type="monotone" dataKey="capital" stroke="#E8A33D" strokeWidth={2.5} dot={false} />
               <Line type="monotone" dataKey="injected" stroke="#687EE3" strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
             </LineChart>
           </ResponsiveContainer>
@@ -726,7 +1028,7 @@ function Compare({ t, currency }) {
     <div className="flex flex-col gap-5">
       <div className="grid md:grid-cols-2 gap-5">
         <Card>
-          <p className="text-sm font-semibold text-[#FCD535] mb-3">{t.compare.stratA}</p>
+          <p className="text-sm font-semibold text-[#E8A33D] mb-3">{t.compare.stratA}</p>
           <NumberField label={t.compare.capital} value={capA} onChange={setCapA} suffix={currency} />
           <div className="grid grid-cols-2 gap-3">
             <NumberField label={t.compare.spread} value={spreadA} onChange={setSpreadA} step="0.01" suffix="%" />
@@ -734,7 +1036,7 @@ function Compare({ t, currency }) {
           </div>
         </Card>
         <Card>
-          <p className="text-sm font-semibold text-[#0ECB81] mb-3">{t.compare.stratB}</p>
+          <p className="text-sm font-semibold text-[#3FBF7F] mb-3">{t.compare.stratB}</p>
           <NumberField label={t.compare.capital} value={capB} onChange={setCapB} suffix={currency} />
           <div className="grid grid-cols-2 gap-3">
             <NumberField label={t.compare.spread} value={spreadB} onChange={setSpreadB} step="0.01" suffix="%" />
@@ -747,22 +1049,22 @@ function Compare({ t, currency }) {
         <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
           <div className="w-40"><NumberField label={t.compare.weeks} value={weeks} onChange={setWeeks} /></div>
           <div className="flex gap-6 text-sm">
-            <span className="text-stone-400">{t.compare.profitA}: <span className="font-mono text-[#FCD535]">{fmt(last.profitA)}</span></span>
-            <span className="text-stone-400">{t.compare.profitB}: <span className="font-mono text-[#0ECB81]">{fmt(last.profitB)}</span></span>
-            <span className="text-stone-400">{t.compare.winner}: <span className="font-semibold text-[#EAECEF]">{winner}</span></span>
+            <span className="text-stone-400">{t.compare.profitA}: <span className="font-mono text-[#E8A33D]">{fmt(last.profitA)}</span></span>
+            <span className="text-stone-400">{t.compare.profitB}: <span className="font-mono text-[#3FBF7F]">{fmt(last.profitB)}</span></span>
+            <span className="text-stone-400">{t.compare.winner}: <span className="font-semibold text-[#EDEFF2]">{winner}</span></span>
           </div>
         </div>
-        <p className={`text-[11px] font-mono mb-2 transition-opacity ${justSaved ? "opacity-100 text-[#0ECB81]" : "opacity-0"}`}>{t.saved}</p>
+        <p className={`text-[11px] font-mono mb-2 transition-opacity ${justSaved ? "opacity-100 text-[#3FBF7F]" : "opacity-0"}`}>{t.saved}</p>
         <p className="text-xs uppercase tracking-wider text-stone-400 mb-3">{t.compare.chartTitle}</p>
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={data}>
-            <CartesianGrid stroke="#2B3139" strokeDasharray="3 3" />
+            <CartesianGrid stroke="#262B35" strokeDasharray="3 3" />
             <XAxis dataKey="week" stroke="#687EE3" fontSize={11} />
             <YAxis stroke="#687EE3" fontSize={11} width={60} />
-            <Tooltip contentStyle={{ background: "#0B0E11", border: "1px solid #3B4048", borderRadius: 8, fontSize: 12 }} />
+            <Tooltip contentStyle={{ background: "#0B0E11", border: "1px solid #34394A", borderRadius: 8, fontSize: 12 }} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="profitA" name={t.compare.stratA} fill="#FCD535" radius={[3, 3, 0, 0]} />
-            <Bar dataKey="profitB" name={t.compare.stratB} fill="#0ECB81" radius={[3, 3, 0, 0]} />
+            <Bar dataKey="profitA" name={t.compare.stratA} fill="#E8A33D" radius={[3, 3, 0, 0]} />
+            <Bar dataKey="profitB" name={t.compare.stratB} fill="#3FBF7F" radius={[3, 3, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </Card>
@@ -773,7 +1075,7 @@ function Compare({ t, currency }) {
 function LegalSection({ title, body }) {
   return (
     <Card>
-      <h3 className="text-sm font-semibold text-[#FCD535] mb-2">{title}</h3>
+      <h3 className="text-sm font-semibold text-[#E8A33D] mb-2">{title}</h3>
       <p className="text-sm text-stone-300 leading-relaxed">{body}</p>
     </Card>
   );
@@ -795,11 +1097,21 @@ function Legal({ t }) {
 // in index.html (see README), this renders a real <ins class="adsbygoogle"> unit.
 // In preview/local dev (no adsbygoogle script present) it shows a subtle placeholder
 // so layout/spacing can be reviewed before ads are live.
+// Detects whether we're running inside the packaged Capacitor app (Android/iOS)
+// vs. the plain website. AdSense is web-only and must never run inside the
+// packaged app — Google Play policy requires AdMob (or another mobile SDK)
+// for ads shown inside a native app shell.
+function isNativeApp() {
+  return typeof window !== "undefined" && window.Capacitor && window.Capacitor.isNativePlatform();
+}
+
 function AdSlot({ slotId = "0000000000", format = "auto", label = "Ad" }) {
   const ref = useRef(null);
   const [live, setLive] = useState(false);
 
   useEffect(() => {
+    // Never load AdSense inside the native app shell.
+    if (isNativeApp()) return;
     if (typeof window !== "undefined" && window.adsbygoogle) {
       try {
         (window.adsbygoogle = window.adsbygoogle || []).push({});
@@ -810,10 +1122,15 @@ function AdSlot({ slotId = "0000000000", format = "auto", label = "Ad" }) {
     }
   }, []);
 
+  // Inside the native app, this inline slot renders nothing — the AdMob
+  // banner (see NativeBannerAd below) is shown as a separate native overlay
+  // anchored to the bottom of the screen instead.
+  if (isNativeApp()) return null;
+
   return (
     <div className="no-print my-4 flex justify-center">
       {!live && (
-        <div className="w-full max-w-2xl border border-dashed border-[#3B4048] rounded-lg py-6 text-center text-[11px] uppercase tracking-wider text-stone-600">
+        <div className="w-full max-w-2xl border border-dashed border-[#34394A] rounded-lg py-6 text-center text-[11px] uppercase tracking-wider text-stone-600">
           {label} Space — AdSense unit renders here on the live site
         </div>
       )}
@@ -830,6 +1147,53 @@ function AdSlot({ slotId = "0000000000", format = "auto", label = "Ad" }) {
   );
 }
 
+// ---- AdMob banner for the packaged Android/iOS app ----
+// Requires: npm install @capacitor-community/admob
+// then: npx cap sync
+// Mount this ONCE near the root of <App /> (not per-tab). AdMob banners are
+// native views drawn on top of the WebView, anchored to the bottom of the
+// screen — they are not part of the React tree's layout.
+//
+// IMPORTANT: use Google's official TEST ad unit IDs during development.
+// Serving real ads to yourself, or shipping before your AdMob account is
+// approved, can get your AdMob account suspended. Swap in your real ad unit
+// ID only in a signed release build you're about to publish.
+function NativeBannerAd({ testMode = true }) {
+  useEffect(() => {
+    if (!isNativeApp()) return;
+    let mounted = true;
+
+    import("@capacitor-community/admob")
+      .then(async ({ AdMob, BannerAdPosition, BannerAdSize }) => {
+        if (!mounted) return;
+        await AdMob.initialize({
+          initializeForTesting: testMode,
+        });
+        await AdMob.showBanner({
+          adId: testMode
+            ? "ca-app-pub-3940256099942544/6300978111" // Google's shared Android test banner ID
+            : "ca-app-pub-XXXXXXXXXXXXXXXX/YYYYYYYYYY", // <- your real AdMob banner unit ID
+          adSize: BannerAdSize.ADAPTIVE_BANNER,
+          position: BannerAdPosition.BOTTOM_CENTER,
+          margin: 0,
+          isTesting: testMode,
+        });
+      })
+      .catch(() => {
+        // Plugin not installed yet / running in a preview — fail silently.
+      });
+
+    return () => {
+      mounted = false;
+      import("@capacitor-community/admob")
+        .then(({ AdMob }) => AdMob.hideBanner())
+        .catch(() => {});
+    };
+  }, [testMode]);
+
+  return null; // purely a side-effecting component; no inline UI
+}
+
 function SettingSelect({ value, onChange, options, label }) {
   return (
     <label className="flex items-center gap-1.5 text-xs font-mono">
@@ -837,7 +1201,7 @@ function SettingSelect({ value, onChange, options, label }) {
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="bg-[#0B0E11] border border-[#3B4048] rounded-full px-2.5 py-1.5 text-stone-200 outline-none hover:border-[#FCD535] transition-colors cursor-pointer"
+        className="bg-[#0B0E11] border border-[#34394A] rounded-full px-2.5 py-1.5 text-stone-200 outline-none hover:border-[#E8A33D] transition-colors cursor-pointer"
       >
         {options.map((opt) => (
           <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -866,13 +1230,40 @@ export default function App() {
   return (
     <div
       dir={t.dir}
-      className="min-h-screen bg-[#181A20] text-[#EAECEF]"
-      style={{ fontFamily: lang === "ar" ? "'IBM Plex Sans Arabic', sans-serif" : "'Space Grotesk', sans-serif" }}
+      className="min-h-screen bg-[#0D0F14] text-[#EDEFF2]"
+      style={{ fontFamily: lang === "ar" ? "'IBM Plex Sans Arabic', sans-serif" : "'Inter', sans-serif" }}
     >
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
         .font-mono { font-family: 'IBM Plex Mono', monospace; }
         input[type=number]::-webkit-inner-spin-button { opacity: 0; }
+
+        @keyframes digit-roll {
+          from { transform: translateY(55%); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+        .odometer-digit > span {
+          animation: digit-roll 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .odometer-digit > span { animation: none; }
+        }
+
+        @keyframes ticker-scroll {
+          from { transform: translateX(0); }
+          to { transform: translateX(-50%); }
+        }
+        .ticker-track {
+          width: max-content;
+          animation: ticker-scroll 28s linear infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .ticker-track { animation: none; }
+        }
+        a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
+          outline: 2px solid #E8A33D;
+          outline-offset: 2px;
+        }
         @media print {
           header, nav, footer, .no-print { display: none !important; }
           body, .min-h-screen { background: #ffffff !important; color: #111111 !important; }
@@ -881,7 +1272,11 @@ export default function App() {
         }
       `}</style>
 
-      <header className="border-b border-[#2B3139] px-5 py-4 max-w-5xl mx-auto">
+      <div className="no-print">
+        <LivePriceTicker />
+      </div>
+
+      <header className="border-b border-[#262B35] px-5 py-4 max-w-5xl mx-auto">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-lg font-bold tracking-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{t.brand}</h1>
@@ -892,18 +1287,20 @@ export default function App() {
             <SettingSelect value={asset} onChange={setAsset} options={assetOptions} label={t.assetLabel} />
             <SettingSelect value={lang} onChange={setLang} options={langOptions} label="" />
             <button onClick={() => window.print()}
-              className="text-xs font-mono border border-[#3B4048] rounded-full px-3 py-1.5 text-stone-300 hover:border-[#FCD535] hover:text-[#FCD535] transition-colors">
+              className="text-xs font-mono border border-[#34394A] rounded-full px-3 py-1.5 text-stone-300 hover:border-[#E8A33D] hover:text-[#E8A33D] transition-colors">
               {t.export}
             </button>
           </div>
         </div>
       </header>
 
+      <NativeBannerAd testMode={true} />
+
       <nav className="max-w-5xl mx-auto px-5 pt-5 flex gap-2 flex-wrap">
         {Object.entries(t.tabs).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-              tab === key ? "bg-[#FCD535] text-[#181A20]" : "bg-[#1E2329] text-stone-300 border border-[#2B3139] hover:border-[#FCD535]"
+              tab === key ? "bg-[#E8A33D] text-[#0D0F14]" : "bg-[#161920] text-stone-300 border border-[#262B35] hover:border-[#E8A33D]"
             }`}>
             {label}
           </button>
@@ -915,23 +1312,27 @@ export default function App() {
       </div>
 
       <main id="printable-area" className="max-w-5xl mx-auto px-5 py-6">
-        {tab === "single" && <SingleTrade t={t} currency={currency} asset={asset} />}
+        {tab === "single" && (
+          <>
+            <SingleTrade t={t} currency={currency} asset={asset} />
+            <div className="grid md:grid-cols-2 gap-5">
+              <BreakEven currency={currency} asset={asset} />
+              <ExchangeCompare currency={currency} asset={asset} />
+            </div>
+          </>
+        )}
         {tab === "compound" && <Compounding t={t} currency={currency} />}
         {tab === "compare" && <Compare t={t} currency={currency} />}
-        {tab === "legal" && <Legal t={t} />} </main>
-
-        <AffiliateBanner />
-
-        <div className="max-w-5xl mx-auto px-5">
-          <AdSlot slotId="2222222222" label="In-content" />
-        </div>
+        {tab === "legal" && <Legal t={t} />}
       </main>
+
+      <AffiliateBanner />
 
       <div className="max-w-5xl mx-auto px-5">
         <AdSlot slotId="2222222222" label="In-content" />
       </div>
 
-      <footer className="max-w-5xl mx-auto px-5 py-6 mt-4 border-t border-[#2B3139] text-xs text-stone-500 leading-relaxed">
+      <footer className="max-w-5xl mx-auto px-5 py-6 mt-4 border-t border-[#262B35] text-xs text-stone-500 leading-relaxed">
         {t.footer}
       </footer>
     </div>
