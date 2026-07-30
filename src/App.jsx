@@ -1163,7 +1163,7 @@ function NativeBannerAd({ testMode = true }) {
     if (!isNativeApp()) return;
     let mounted = true;
 
-    import("@capacitor-community/admob")
+    import(/* @vite-ignore */ "@capacitor-community/admob")
       .then(async ({ AdMob, BannerAdPosition, BannerAdSize }) => {
         if (!mounted) return;
         await AdMob.initialize({
@@ -1185,7 +1185,7 @@ function NativeBannerAd({ testMode = true }) {
 
     return () => {
       mounted = false;
-      import("@capacitor-community/admob")
+      import(/* @vite-ignore */ "@capacitor-community/admob")
         .then(({ AdMob }) => AdMob.hideBanner())
         .catch(() => {});
     };
